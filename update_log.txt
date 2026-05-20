@@ -1,0 +1,88 @@
+[2026-03-06 17:56:34] 
+============================================================
+[2026-03-06 17:56:34] 🚀 GOOGLE SHEETS TO MONGODB UPDATER
+[2026-03-06 17:56:34] ============================================================
+[2026-03-06 17:56:34] Computer: WBSEDCL-SE-E-1
+[2026-03-06 17:56:34] Sheet ID: 12ifSl_us1fzuLuQ74dUPnZbP8nlLt9ceMcloBMVUFeU
+[2026-03-06 17:56:34] ------------------------------------------------------------
+[2026-03-06 17:56:34] 
+📤 STEP 1: Fetching from Google Sheets...
+[2026-03-06 17:56:34] 📤 Fetching from: https://docs.google.com/spreadsheets/d/12ifSl_us1fzuLuQ74dUPnZbP8nlLt9ceMcloBMVUFeU/export?format=csv&gid=0
+[2026-03-06 17:56:36] ✅ Successfully fetched 3 rows
+[2026-03-06 17:56:36] 📋 Columns found: Date, Zone, Region, Division, CCC Name, CCC Type, Office Address, Working Area (sq km), Total Consumers, Domestic, Commercial, Industrial, Agricultural, Temp Disconnected, Perm Disconnected, Total DTR, AT&C Loss % (Last March), AT&C Loss % (This Month), T&D Loss % (Last March), T&D Loss % (This Month)
+[2026-03-06 17:56:36] 
+📋 Sample data (first 3 rows):
+[2026-03-06 17:56:36]   Row 1: {
+  "Date": "1/3/2026",
+  "Zone": "Siliguri Zone",
+  "Region": "Darjeeling Region",
+  "Division": "Siliguri Town Division",
+  "CCC Name": "Power House CCC",
+  "CCC Type": "City",
+  "Office Address": "...
+[2026-03-06 17:56:36]   Row 2: {
+  "Date": "1/3/2026",
+  "Zone": "Siliguri Zone",
+  "Region": "Darjeeling Region",
+  "Division": "Siliguri Town Division",
+  "CCC Name": "Hakimpara CCC",
+  "CCC Type": "Industrial",
+  "Office Address...
+[2026-03-06 17:56:36]   Row 3: {
+  "Date": "1/3/2026",
+  "Zone": "Siliguri Zone",
+  "Region": "Darjeeling Region",
+  "Division": "Kurseong Division",
+  "CCC Name": "Kurseong CCC",
+  "CCC Type": "Town",
+  "Office Address": "Main Roa...
+[2026-03-06 17:56:36] 
+🔄 STEP 2: Transforming data...
+[2026-03-06 17:56:36] 
+🔄 Transforming data...
+[2026-03-06 17:56:36] ✅ Transformed 0 valid records
+[2026-03-06 17:56:36] ⚠️ Skipped 3 rows
+[2026-03-06 17:56:36] ❌ No valid data after transformation
+[2026-03-07 12:26:11] 
+======================================================================
+[2026-03-07 12:26:11] 🏭 MASTER SUBSTATIONS DATA UPDATER
+[2026-03-07 12:26:11] ======================================================================
+[2026-03-07 12:26:11] 📅 Started at: 2026-03-07 12:26:11
+[2026-03-07 12:26:11] 📁 Working directory: D:\inventory-updates
+[2026-03-07 12:26:11] 📄 Sheet ID: 12ifSl_us1fzuLuQ74dUPnzBp8nlLt9ceMc1oBMVUFeU
+[2026-03-07 12:26:11] 🔢 Sheet GID: 836026436
+[2026-03-07 12:26:11] 📊 Target collection: substations
+[2026-03-07 12:26:11] ----------------------------------------------------------------------
+[2026-03-07 12:26:11] This update will feed data to:
+[2026-03-07 12:26:11]   ✅ 33/11kV Sub-Station Dashboard
+[2026-03-07 12:26:11]   ✅ 33kV Line Dashboard
+[2026-03-07 12:26:11]   ✅ 11kV Line Dashboard
+[2026-03-07 12:26:11] ----------------------------------------------------------------------
+[2026-03-07 12:26:11] ⚠️ Using SUBSTATIONS_GID: 836026436
+[2026-03-07 12:26:11] 
+📤 STEP 1: Fetching from Google Sheets...
+[2026-03-07 12:26:11] 📤 Fetching from Google Sheets...
+[2026-03-07 12:26:11]    Sheet GID: 836026436
+[2026-03-07 12:26:11] ❌ Network error fetching data: 404 Client Error: Not Found for url: https://docs.google.com/spreadsheets/d/12ifSl_us1fzuLuQ74dUPnzBp8nlLt9ceMc1oBMVUFeU/export?format=csv&gid=836026436
+[2026-03-07 12:26:11] 
+❌ No data fetched. Please check:
+[2026-03-07 12:26:11]    1. Sheet ID is correct
+[2026-03-07 12:26:11]    2. Sheet is public (Anyone with link can view)
+[2026-03-07 12:26:11]    3. GID is correct for the substations tab
+[2026-03-07 12:52:26] 
+============================================================
+[2026-03-07 12:52:26] 🚀 GOOGLE SHEETS TO MONGODB UPDATER
+[2026-03-07 12:52:26] ============================================================
+[2026-03-07 12:52:26] Computer: WBSEDCL-SE-E-1
+[2026-03-07 12:52:26] Sheet ID: 12ifSl_us1fzuLuQ74dUPnzBp8nlLt9ceMc1oBMVUFeU
+[2026-03-07 12:52:26] ------------------------------------------------------------
+[2026-03-07 12:52:26] 
+📤 STEP 1: Fetching from Google Sheets...
+[2026-03-07 12:52:26] 📤 Fetching from: https://docs.google.com/spreadsheets/d/12ifSl_us1fzuLuQ74dUPnzBp8nlLt9ceMc1oBMVUFeU/export?format=csv&gid=0
+[2026-03-07 12:52:27] ❌ Error fetching data: 404 Client Error: Not Found for url: https://docs.google.com/spreadsheets/d/12ifSl_us1fzuLuQ74dUPnzBp8nlLt9ceMc1oBMVUFeU/export?format=csv&gid=0
+[2026-03-07 12:52:27] 
+🔍 Troubleshooting tips:
+[2026-03-07 12:52:27] 1. Make sure your Sheet ID is correct in .env file
+[2026-03-07 12:52:27] 2. Make sure your Google Sheet is public (Anyone with link can view)
+[2026-03-07 12:52:27] 3. Try opening this URL in browser to test:
+[2026-03-07 12:52:27]    https://docs.google.com/spreadsheets/d/12ifSl_us1fzuLuQ74dUPnzBp8nlLt9ceMc1oBMVUFeU/export?format=csv&gid=0

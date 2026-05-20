@@ -1,0 +1,8 @@
+# Core packages for all updaters
+pandas==2.0.3
+pymongo==4.5.0
+python-dotenv==1.0.0
+requests==2.31.0
+
+# Optional but useful
+openpyxl==3.1.2  # For Excel support if needed
