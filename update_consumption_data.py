@@ -1,6 +1,6 @@
 """
 Google Sheets to MongoDB Sync – Inventory Consumption Data
-Last Updated: May 19, 2026 - FIXED: Material code decimal issue
+Last Updated: May 22, 2026 - FIXED: Plant code decimal removal (.0)
 """
 
 import os
@@ -8,6 +8,7 @@ import sys
 import pandas as pd
 import requests
 import time
+import re
 from datetime import datetime
 from io import StringIO
 from dotenv import load_dotenv
@@ -51,8 +52,37 @@ def fetch_sheet_data(sheet_name, gid):
         return None
 
 
+def clean_plant_codes(value):
+    """Clean plant code - remove .0 and convert to string"""
+    if pd.isna(value):
+        return 'all'
+    # Convert to string
+    val_str = str(value).strip()
+    # Remove .0 at the end
+    val_str = re.sub(r'\.0$', '', val_str)
+    # Remove any other decimal points
+    val_str = re.sub(r'\.\d+$', '', val_str)
+    # Handle 'nan' string
+    if val_str.lower() == 'nan':
+        return 'all'
+    return val_str
+
+
+def clean_material_codes(value):
+    """Clean material code - remove .0 and convert to string"""
+    if pd.isna(value):
+        return ''
+    # Convert to string
+    val_str = str(value).strip()
+    # Remove .0 at the end
+    val_str = re.sub(r'\.0$', '', val_str)
+    # Remove any other decimal points
+    val_str = re.sub(r'\.\d+$', '', val_str)
+    return val_str
+
+
 def clean_transactions_data(df):
-    """Clean and prepare transactions data - FIXED for decimal material codes"""
+    """Clean and prepare transactions data - FIXED: cleans plant codes"""
     if df is None or df.empty:
         return df
     
@@ -68,12 +98,10 @@ def clean_transactions_data(df):
         if col in df.columns:
             df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
     
-    # Handle date formats - convert various date formats to consistent YYYY-MM
     def normalize_period(period_str):
         if not period_str:
             return period_str
         period_str = str(period_str).strip()
-        # Handle MM/DD/YYYY format
         if '/' in period_str:
             parts = period_str.split('/')
             if len(parts) == 3:
@@ -83,26 +111,25 @@ def clean_transactions_data(df):
     if 'period' in df.columns:
         df['period'] = df['period'].apply(normalize_period)
     
-    # CRITICAL FIX: Clean material_code - remove .0 and convert to string without decimals
+    # Clean material_code - remove .0
     if 'material_code' in df.columns:
-        # Convert to string first
-        df['material_code'] = df['material_code'].astype(str).str.strip()
-        # Remove .0 at the end if present
-        df['material_code'] = df['material_code'].str.replace(r'\.0$', '', regex=True)
-        # Remove any other decimal points
-        df['material_code'] = df['material_code'].str.replace(r'\.\d+$', '', regex=True)
+        df['material_code'] = df['material_code'].apply(clean_material_codes)
         print(f"   📊 Sample material codes after cleaning: {df['material_code'].unique()[:5]}")
     
-    # Fill missing values
+    # ============ CRITICAL FIX: Clean plant codes - remove .0 ============
     if 'plant' in df.columns:
-        df['plant'] = df['plant'].fillna('all').astype(str).str.strip()
+        df['plant'] = df['plant'].apply(clean_plant_codes)
+        print(f"   📊 Sample plant codes after cleaning: {df['plant'].unique()[:10]}")
     
+    # Clean material_group
     if 'material_group' in df.columns:
         df['material_group'] = df['material_group'].fillna('Uncategorized').astype(str).str.strip()
     
+    # Clean unit
     if 'unit' in df.columns:
         df['unit'] = df['unit'].fillna('Units').astype(str).str.strip()
     
+    # Clean material_description
     if 'material_description' in df.columns:
         df['material_description'] = df['material_description'].fillna('Unknown').astype(str).str.strip()
     
@@ -110,18 +137,135 @@ def clean_transactions_data(df):
     return df
 
 
-def clean_material_master(df):
-    """Clean material master data"""
+def process_current_stock(df, storage_locations_df):
+    """
+    Process current stock data and map plant codes to division names
+    FIXED: cleans plant codes before processing
+    """
+    if df is None or df.empty:
+        return None
+    
+    print(f"   📋 Processing {len(df)} stock records...")
+    
+    # Create plant to division mapping from storage_locations
+    plant_to_division = {}
+    if storage_locations_df is not None and not storage_locations_df.empty:
+        for _, row in storage_locations_df.iterrows():
+            plant = clean_plant_codes(row.get('Plant', ''))
+            division = str(row.get('division', '')).strip()
+            if plant and division and plant != 'all':
+                plant_to_division[plant] = division
+    print(f"   📋 Loaded {len(plant_to_division)} plant-to-division mappings")
+    print(f"   📋 Sample plants: {list(plant_to_division.keys())[:5]}")
+    
+    records = []
+    for _, row in df.iterrows():
+        # Get plant code and clean it
+        plant = clean_plant_codes(row.get('plant', ''))
+        if not plant or plant == 'all':
+            continue
+        
+        # Get division name from mapping
+        division_name = plant_to_division.get(plant, plant)
+        
+        # Get material code and clean it
+        material_code = clean_material_codes(row.get('material_code', ''))
+        if not material_code:
+            continue
+        
+        # Get current stock value
+        current_stock = 0
+        if 'current_stock' in df.columns:
+            try:
+                current_stock = float(row.get('current_stock', 0))
+            except:
+                current_stock = 0
+        
+        # Get stock value
+        stock_value = 0
+        if 'stock_value' in df.columns:
+            try:
+                stock_value = float(row.get('stock_value', 0))
+            except:
+                stock_value = 0
+        
+        record = {
+            'plant': plant,
+            'division': division_name,
+            'material_code': material_code,
+            'material_description': str(row.get('material_description', '')).strip() if 'material_description' in df.columns else '',
+            'storage_location': str(row.get('storage_location', '')).strip() if 'storage_location' in df.columns else plant,
+            'unit': str(row.get('unit', 'Units')).strip() if 'unit' in df.columns else 'Units',
+            'current_stock': current_stock,
+            'stock_value': stock_value,
+            'material_group': str(row.get('material_group', '')).strip() if 'material_group' in df.columns else '',
+            'last_updated': datetime.now()
+        }
+        records.append(record)
+    
+    print(f"   📊 Processed {len(records)} stock records")
+    if records:
+        sample = records[0]
+        print(f"   📝 Sample: Plant {sample['plant']} ({sample['division']}) - {sample['material_code']}: {sample['current_stock']} {sample['unit']}")
+    
+    return pd.DataFrame(records) if records else None
+
+
+def process_storage_locations(df):
+    """Process storage locations data - FIXED: cleans plant codes"""
     if df is None or df.empty:
         return df
     
-    # Clean material_code - remove .0
-    if 'Material_Code' in df.columns:
-        df['Material_Code'] = df['Material_Code'].astype(str).str.strip()
-        df['Material_Code'] = df['Material_Code'].str.replace(r'\.0$', '', regex=True)
-        df['Material_Code'] = df['Material_Code'].str.replace(r'\.\d+$', '', regex=True)
+    print(f"   📋 Processing {len(df)} storage locations...")
     
-    return df
+    records = []
+    for _, row in df.iterrows():
+        plant = clean_plant_codes(row.get('Plant', ''))
+        if not plant or plant == 'all':
+            continue
+        
+        record = {
+            'plant': plant,
+            'location_name': str(row.get('location_name', '')).strip(),
+            'type': str(row.get('type', '')).strip(),
+            'region': str(row.get('region', '')).strip(),
+            'division': str(row.get('division', '')).strip(),
+            'last_updated': datetime.now()
+        }
+        records.append(record)
+    
+    print(f"   📊 Processed {len(records)} storage locations")
+    print(f"   📋 Sample plants: {[r['plant'] for r in records[:5]]}")
+    return pd.DataFrame(records) if records else None
+
+
+def process_material_master(df):
+    """Process material master data - FIXED: cleans material codes"""
+    if df is None or df.empty:
+        return df
+    
+    print(f"   📋 Processing {len(df)} material master records...")
+    
+    records = []
+    for _, row in df.iterrows():
+        material_code = clean_material_codes(row.get('Material_Code', ''))
+        if not material_code:
+            continue
+        
+        record = {
+            'Material_Code': material_code,
+            'Material Description': str(row.get('Material Description', '')).strip(),
+            'Unit of Entry': str(row.get('Unit of Entry', '')).strip(),
+            'Material Group': str(row.get('Material Group', '')).strip(),
+            'Manual_Min_stock': row.get('Manual_Min_stock', None),
+            'Manual_Reorder_level': row.get('Manual_Reorder_level', None),
+            'Unit_Price': row.get('Unit_Price', None),
+            'last_updated': datetime.now()
+        }
+        records.append(record)
+    
+    print(f"   📊 Processed {len(records)} material master records")
+    return pd.DataFrame(records) if records else None
 
 
 def update_mongodb(collection_name, df, batch_size=1000):
@@ -137,14 +281,12 @@ def update_mongodb(collection_name, df, batch_size=1000):
     
     coll = db[collection_name]
     
-    # Clear existing
     try:
         result = coll.delete_many({})
         print(f"   🗑️  Cleared {result.deleted_count} records from {collection_name}")
     except Exception as e:
         print(f"   ⚠️ Delete issue: {e}")
     
-    # Convert to records
     records = df.to_dict('records')
     total = len(records)
     inserted = 0
@@ -159,7 +301,6 @@ def update_mongodb(collection_name, df, batch_size=1000):
             print(f"   📦 Batch {i//batch_size + 1}: {len(batch)} records ({inserted}/{total})")
         except Exception as e:
             print(f"   ⚠️ Batch error: {e}")
-            # Try one by one
             for record in batch:
                 try:
                     coll.insert_one(record)
@@ -171,13 +312,11 @@ def update_mongodb(collection_name, df, batch_size=1000):
 
 
 def create_consumption_summary(db):
-    """Create consumption_summary from inventory_transactions"""
+    """Create consumption_summary from inventory_transactions - FIXED: cleans plant codes"""
     print("\n📊 Creating consumption_summary from inventory_transactions...")
     
-    # Clear existing
     db.consumption_summary.delete_many({})
     
-    # Get all transactions
     all_transactions = list(db.inventory_transactions.find({}))
     print(f"   📊 Total transactions: {len(all_transactions)}")
     
@@ -185,7 +324,6 @@ def create_consumption_summary(db):
         print("   ⚠️ No transactions found")
         return
     
-    # Filter to consumption records (consumption_quantity > 0)
     consumption_records = [t for t in all_transactions if t.get('consumption_quantity', 0) > 0]
     print(f"   📊 Consumption records: {len(consumption_records)}")
     
@@ -193,14 +331,11 @@ def create_consumption_summary(db):
         print("   ⚠️ No consumption records found")
         return
     
-    # Convert to DataFrame for easier processing
     df = pd.DataFrame(consumption_records)
     
-    # Remove _id field
     if '_id' in df.columns:
         df = df.drop('_id', axis=1)
     
-    # Ensure required columns exist
     required_cols = ['period', 'period_type', 'material_code', 'material_description', 
                      'material_group', 'consumption_quantity', 'unit', 'plant', 'year', 'month', 'quarter']
     
@@ -208,24 +343,25 @@ def create_consumption_summary(db):
         if col not in df.columns:
             df[col] = None
     
-    # Rename consumption_quantity to quantity for consistency
-    df['quantity'] = df['consumption_quantity']
+    # ============ CRITICAL FIX: Clean plant codes in consumption_summary ============
+    if 'plant' in df.columns:
+        df['plant'] = df['plant'].apply(clean_plant_codes)
+        print(f"   📊 Plant codes in consumption_summary after cleaning: {df['plant'].unique()[:10]}")
     
-    # Select and order columns
+    # Clean material codes
+    if 'material_code' in df.columns:
+        df['material_code'] = df['material_code'].apply(clean_material_codes)
+    
+    df['quantity'] = df['consumption_quantity']
     final_cols = ['period', 'period_type', 'material_code', 'material_name', 'quantity', 
                   'unit', 'material_group', 'plant', 'year', 'month', 'quarter', 'last_updated']
     
-    # Create material_name from material_description
     df['material_name'] = df['material_description']
-    
-    # Fill missing values
     df['material_name'] = df['material_name'].fillna('Unknown')
     df['unit'] = df['unit'].fillna('Units')
     df['material_group'] = df['material_group'].fillna('Uncategorized')
-    df['plant'] = df['plant'].fillna('all')
     df['last_updated'] = datetime.now()
     
-    # Keep only needed columns
     for col in final_cols:
         if col not in df.columns:
             df[col] = None
@@ -233,93 +369,92 @@ def create_consumption_summary(db):
     df = df[final_cols]
     
     print(f"   📊 Final consumption summary records: {len(df)}")
-    
-    # Update MongoDB
     update_mongodb('consumption_summary', df, batch_size=1000)
     
-    # Verify specific material
-    rbt_count = db.consumption_summary.count_documents({'material_code': '502010921'})
-    if rbt_count > 0:
-        print(f"\n   ✅ SUCCESS: {rbt_count} records found for material 502010921 (COND ACSR RBT 50SMM)")
-        
-        # Show summary for RBT material
-        pipeline = [
-            {'$match': {'material_code': '502010921'}},
-            {'$group': {
-                '_id': None,
-                'total_quantity': {'$sum': '$quantity'},
-                'record_count': {'$sum': 1},
-                'plants': {'$addToSet': '$plant'}
-            }}
-        ]
-        result = list(db.consumption_summary.aggregate(pipeline))
-        if result:
-            print(f"   📊 Total consumption for RBT 50SMM: {result[0]['total_quantity']:.2f} KM")
-            print(f"   📊 Number of records: {result[0]['record_count']}")
-            print(f"   📊 Plants with data: {sorted(result[0]['plants'])}")
-    else:
-        print(f"\n   ⚠️ WARNING: No records found for material 502010921")
-        print(f"   Available materials (first 10): {db.consumption_summary.distinct('material_code')[:10]}")
+    # Verify plant codes
+    plants = db.consumption_summary.distinct('plant')
+    print(f"   📊 Distinct plants in consumption_summary: {sorted(plants)[:15]}")
 
 
 def main():
     print("=" * 70)
-    print("📊 INVENTORY DATA SYNC - FIXED (Material Code Decimal Issue)")
+    print("📊 INVENTORY DATA SYNC - COMPLETE (Plant Code Fixed)")
     print("=" * 70)
     
     try:
-        # 1. Fetch transactions_summary (MAIN DATA)
+        # 1. Fetch storage_locations FIRST (needed for plant mapping)
         print("\n" + "-" * 50)
-        print("STEP 1: Fetching transactions_summary from Google Sheets")
+        print("STEP 1: Fetching storage_locations")
         print("-" * 50)
-        trans_df = fetch_sheet_data('transactions_summary', SHEET_GIDS['transactions_summary'])
+        loc_df = fetch_sheet_data('storage_locations', SHEET_GIDS['storage_locations'])
+        storage_locations_df = process_storage_locations(loc_df) if loc_df is not None else None
+        if storage_locations_df is not None:
+            update_mongodb('storage_locations', storage_locations_df, batch_size=500)
         
-        if trans_df is not None:
-            # Check for RBT material before cleaning
-            rbt_before = trans_df[trans_df['material_code'].astype(str).str.contains('502010921', na=False)]
-            if not rbt_before.empty:
-                print(f"\n   ✅ Found {len(rbt_before)} records for material 502010921 before cleaning")
-            else:
-                print(f"\n   ⚠️ Material 502010921 not found in source data!")
-                print(f"   Available material codes: {trans_df['material_code'].astype(str).unique()[:5]}")
-            
-            # Clean data
-            trans_df = clean_transactions_data(trans_df)
-            
-            # Verify after cleaning
-            rbt_after = trans_df[trans_df['material_code'] == '502010921']
-            if not rbt_after.empty:
-                print(f"\n   ✅ After cleaning: {len(rbt_after)} records for material 502010921")
-                print(f"   📊 Total consumption: {rbt_after['consumption_quantity'].sum():.2f} KM")
-            
-            # Update inventory_transactions
-            print(f"\n   📤 Updating inventory_transactions...")
-            update_mongodb('inventory_transactions', trans_df, batch_size=500)
-        
-        # 2. Fetch material_master
+        # 2. Fetch current_stock (using storage_locations for mapping)
         print("\n" + "-" * 50)
-        print("STEP 2: Fetching material_master")
+        print("STEP 2: Fetching current_stock")
+        print("-" * 50)
+        stock_df = fetch_sheet_data('current_stock', SHEET_GIDS['current_stock'])
+        if stock_df is not None:
+            processed_stock = process_current_stock(stock_df, storage_locations_df)
+            if processed_stock is not None and not processed_stock.empty:
+                update_mongodb('current_stock', processed_stock, batch_size=500)
+            else:
+                print("   ⚠️ No valid stock records found")
+        else:
+            print("   ❌ Failed to fetch current_stock sheet")
+        
+        # 3. Fetch material_master
+        print("\n" + "-" * 50)
+        print("STEP 3: Fetching material_master")
         print("-" * 50)
         mat_df = fetch_sheet_data('material_master', SHEET_GIDS['material_master'])
         if mat_df is not None:
-            mat_df = clean_material_master(mat_df)
-            update_mongodb('material_master', mat_df, batch_size=500)
+            processed_material_master = process_material_master(mat_df)
+            update_mongodb('material_master', processed_material_master, batch_size=500)
         
-        # 3. Fetch storage_locations
+        # 4. Fetch transactions_summary
         print("\n" + "-" * 50)
-        print("STEP 3: Fetching storage_locations")
+        print("STEP 4: Fetching transactions_summary")
         print("-" * 50)
-        loc_df = fetch_sheet_data('storage_locations', SHEET_GIDS['storage_locations'])
-        if loc_df is not None:
-            update_mongodb('storage_locations', loc_df, batch_size=500)
+        trans_df = fetch_sheet_data('transactions_summary', SHEET_GIDS['transactions_summary'])
+        if trans_df is not None:
+            trans_df = clean_transactions_data(trans_df)
+            update_mongodb('inventory_transactions', trans_df, batch_size=500)
         
-        # 4. Create consumption_summary
+        # 5. Create consumption_summary
         print("\n" + "-" * 50)
-        print("STEP 4: Creating consumption_summary")
+        print("STEP 5: Creating consumption_summary")
         print("-" * 50)
         db = get_db()
         if db is not None:
             create_consumption_summary(db)
+        
+        # 6. Verification
+        print("\n" + "-" * 50)
+        print("STEP 6: Verification")
+        print("-" * 50)
+        if db is not None:
+            stock_count = db.current_stock.count_documents({})
+            loc_count = db.storage_locations.count_documents({})
+            trans_count = db.inventory_transactions.count_documents({})
+            summary_count = db.consumption_summary.count_documents({})
+            print(f"   📊 current_stock: {stock_count} records")
+            print(f"   📊 storage_locations: {loc_count} records")
+            print(f"   📊 inventory_transactions: {trans_count} records")
+            print(f"   📊 consumption_summary: {summary_count} records")
+            
+            # Show sample plants from consumption_summary
+            plants = db.consumption_summary.distinct('plant')
+            print(f"   📊 Plants in consumption_summary: {sorted(plants)[:15]}")
+            
+            # Check for decimal issue
+            decimal_plants = [p for p in plants if '.0' in str(p)]
+            if decimal_plants:
+                print(f"   ⚠️ WARNING: Still found decimal plants: {decimal_plants[:5]}")
+            else:
+                print(f"   ✅ No decimal plants found - FIXED!")
         
         print("\n" + "=" * 70)
         print("✅ SYNC COMPLETED SUCCESSFULLY!")
